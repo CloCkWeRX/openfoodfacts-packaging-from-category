@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import requests, logging, urllib, argparse, json, sys, operator
+import requests, logging, urllib, argparse, json, sys, operator, collections
 from jsonpath_rw import jsonpath, parse
 
 parser = argparse.ArgumentParser()
@@ -11,7 +11,9 @@ parser.add_argument("category", help="Category you want to examine. Try cake-mix
 
 args = parser.parse_args()
 
-if args.debug:
+if args.debug == "1":
+	logging.basicConfig(stream=sys.stdout, level=logging.INFO)
+if args.debug == "2":
 	logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
 
 def summarize_packaging(data):
@@ -36,7 +38,7 @@ def more_to_fetch(data, page):
 	return count > index
 
 def fetch_products(category, country, page = 1):
-	url = "https://{country}.openfoodfacts.org/state/packaging-code-completed/category/{category}.json".format(country=urllib.quote(country), category=urllib.quote(category))
+	url = "https://{country}.openfoodfacts.org/state/packaging-code-completed/category/{category}/{page}.json".format(country=urllib.quote(country), category=urllib.quote(category), page=page)
 	logging.info("Fetching " + url)
 	response = requests.get(url)
 
@@ -56,17 +58,23 @@ data = fetch_products(args.category, args.country, page)
 if data != None:
 	packaging_summary = summarize_packaging(data)
 	while more_to_fetch(data, page):
+		logging.debug(packaging_summary)
+
 		page += 1
 		data = fetch_products(args.category, args.country, page)
 
 		if data == None:
 			break
 
-		packaging_summary.update(summarize_packaging(data))
-		if page > 3:
+		additional_summary = summarize_packaging(data)
+		packaging_summary.update(additional_summary)
+		if page > 2:
 			logging.info("Fetched maximum pages, halting")
 			break
 
-	sorted_summary = sorted(packaging_summary.items(), key=operator.itemgetter(1), reverse=True)
-	print json.dumps(sorted_summary)
+	overall_summary = collections.OrderedDict()
+	for packaging, count in sorted(packaging_summary.items(), key=operator.itemgetter(1), reverse=True):
+		overall_summary[packaging] = count
+
+	print json.dumps(overall_summary)
 
